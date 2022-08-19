@@ -1,31 +1,32 @@
-%define modn c_icap
-%define name c-icap
-%define ver  0.5.10
+%global modn c_icap
 
-Summary         : An implementation of an ICAP server
-Name            : %{name}
-Version         : %{ver}
-Release         : 2%{?dist}%{?pext}
-License         : LGPLv2+
-Group           : System Environment/Daemons
-URL             : http://%{name}.sourceforge.net/
-Source0         : http://downloads.sourceforge.net/project/%{name}/%{name}/0.5.x/%{modn}-%{ver}.tar.gz
-Source1         : etc---logrotate.d---c-icap
-Source2         : etc---sysconfig---c-icap.sysconfig
-Source3         : usr---lib---tmpfiles.d---c-icap.conf
-Source4         : usr---lib---systemd---system---c-icap.service
-Patch0		: c-icap.conf.in.patch
-Buildroot       : %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-Requires        : %{name}-libs = %{version}-%{release}
-Requires        : libdb zlib bzip2-libs pcre
-Requires(pre)   : /usr/sbin/groupadd /usr/sbin/useradd
-Requires(post)  : /bin/systemctl
-Requires(preun) : /bin/systemctl
-Requires(postun): /bin/systemctl
-BuildRequires   : gdbm-devel openldap-devel perl-devel tar zlib-devel bzip2-devel pcre-devel
-BuildRequires	: libdb-devel
-BuildRequires	: gcc make
-Vendor          : Tsantilas Christos <chtsanti@users.sourceforge.net>
+Summary:    An implementation of an ICAP server
+Name:       c-icap
+Version:    0.5.10
+Release:    3%{?dist}
+License:    LGPLv2+
+URL:        http://%{name}.sourceforge.net/
+
+Source0:    http://downloads.sourceforge.net/project/%{name}/%{name}/0.5.x/%{modn}-%{version}.tar.gz
+Source1:    %{name}.logrotate
+Source2:    %{name}.sysconfig
+Source3:    %{name}.tmpfiles.conf
+Source4:    %{name}.service
+Patch0:     c-icap.conf.in.patch
+
+BuildRequires:  bzip2-devel
+BuildRequires:  brotli-devel
+BuildRequires:  gcc
+BuildRequires:  gdbm-devel
+BuildRequires:  libdb-devel
+BuildRequires:  make
+BuildRequires:  openldap-devel
+BuildRequires:  pcre-devel
+BuildRequires:  perl-devel
+BuildRequires:  systemd-rpm-macros
+BuildRequires:  zlib-devel
+
+Requires(pre):  shadow-utils
 
 %description
 C-icap is an implementation of an ICAP server. It can be used with HTTP proxies
@@ -34,141 +35,109 @@ services. Most of the commercial HTTP proxies must support the ICAP protocol,
 the open source Squid 3.x proxy server supports it too.
 
 %package devel
-Summary         : Development tools for %{name}
-Group           : Development/Libraries
-Requires        : %{name}-libs = %{version}-%{release}
-Requires        : zlib-devel
+Summary:     Development tools for %{name}
+Requires:    %{name}-libs%{?_isa} = %{version}-%{release}
+Requires:    zlib-devel
 
 %description devel
 The c-icap-devel package contains the static libraries and header files for
 developing software using c-icap.
 
 %package ldap
-Summary         : The LDAP module for %{name}
-Group           : System Environment/Libraries
-Requires        : %{name} = %{version}-%{release}
-Requires        : openldap
+Summary:    The LDAP module for %{name}
+Requires:   %{name} = %{version}-%{release}
 
 %description ldap
 The c-icap-ldap package contains the LDAP module for c-icap.
 
 %package libs
-Summary         : Libraries used by %{name}
-Group           : System Environment/Libraries
+Summary:    Libraries used by %{name}
 
 %description libs
 The c-icap-libs package contains all runtime libraries used by c-icap and the
 utilities.
 
 %package perl
-Summary         : The Perl handler for %{name}
-Group           : System Environment/Libraries
-Requires        : %{name} = %{version}-%{release}
-Requires        : perl-libs
+Summary:    The Perl handler for %{name}
+Requires:   %{name} = %{version}-%{release}
 
 %description perl
 The c-icap-perl package contains the Perl handler for c-icap.
 
 %package bin
-Summary         : Related programs for %{name}
-Group           : Applications/Internet
-Requires        : %{name}-libs = %{version}-%{release}
+Summary:    Related programs for %{name}
 
 %description bin
 The c-icap-bin package contains several commandline tools for c-icap.
 
 %prep
-%setup -q -n %{modn}-%{ver}
-%patch0 -p 1
+%autosetup -p1 -n %{modn}-%{version}
 
 %build
-LIBS="-lpthread"; export LIBS
 %configure \
-  LDFLAGS="" \
-  CFLAGS="${RPM_OPT_FLAGS} -fno-strict-aliasing -I/usr/include/libdb" \
-  --sysconfdir=%{_sysconfdir}/%{name}            \
-  --enable-shared                                \
-  --enable-static                                \
-  --enable-large-files                           \
-  --enable-lib-compat                            \
-  --with-perl                                    \
-  --with-zlib                                    \
-  --with-bdb                                     \
-  --with-ldap
-  #--enable-ipv6 # net.ipv6.bindv6only not supported
+  --sysconfdir=%{_sysconfdir}/%{name} \
+  --enable-shared \
+  --disable-static \
+  --enable-ipv6 \
+  --enable-large-files \
+  --enable-lib-compat \
+  --with-bdb \
+  --with-brotli \
+  --with-ldap \
+  --with-openssl \
+  --with-perl \
+  --with-zlib
 
-%{__make} %{?_smp_mflags}
+%make_build
 
 %install
-[ -n "${RPM_BUILD_ROOT}" -a "${RPM_BUILD_ROOT}" != "/" ] && %{__rm} -rf ${RPM_BUILD_ROOT}
-%{__mkdir_p} ${RPM_BUILD_ROOT}%{_sbindir}
-%{__mkdir_p} ${RPM_BUILD_ROOT}%{_datadir}/%{modn}/{contrib,templates}
-%{__mkdir_p} ${RPM_BUILD_ROOT}%{_localstatedir}/log/%{name}
+%make_install
 
-%{__make} \
-  DESTDIR=${RPM_BUILD_ROOT} \
-  install
+find %{buildroot} -name "*.la" -delete
 
-%{__mv}      -f      ${RPM_BUILD_ROOT}%{_bindir}/%{name} ${RPM_BUILD_ROOT}%{_sbindir}
+mkdir -p %{buildroot}%{_sbindir}
+mkdir -p %{buildroot}%{_datadir}/%{modn}/{contrib,templates}
+mkdir -p %{buildroot}%{_localstatedir}/log/%{name}
 
-%{__mkdir_p}                      ${RPM_BUILD_ROOT}%{_sysconfdir}/logrotate.d
-%{__install} -m 0644 %{SOURCE1}   ${RPM_BUILD_ROOT}%{_sysconfdir}/logrotate.d/%{name}
-%{__mkdir_p}                      ${RPM_BUILD_ROOT}%{_sysconfdir}/sysconfig
-%{__install} -m 0644 %{SOURCE2}   ${RPM_BUILD_ROOT}%{_sysconfdir}/sysconfig/%{name}
-%{__mkdir_p}                      ${RPM_BUILD_ROOT}%{_tmpfilesdir}
-%{__install} -m 0644 %{SOURCE3}   ${RPM_BUILD_ROOT}%{_tmpfilesdir}/%{name}.conf
-%{__mkdir_p}                      ${RPM_BUILD_ROOT}%{_unitdir}
-%{__install} -m 0644 %{SOURCE4}   ${RPM_BUILD_ROOT}%{_unitdir}/%{name}.service
+mv -f %{buildroot}%{_bindir}/%{name} %{buildroot}%{_sbindir}
 
-%{__install} -m 0755 contrib/*.pl ${RPM_BUILD_ROOT}%{_datadir}/%{modn}/contrib
+install -D -p -m 0644 %{SOURCE1} %{buildroot}%{_sysconfdir}/logrotate.d/%{name}
+install -D -p -m 0644 %{SOURCE2} %{buildroot}%{_sysconfdir}/sysconfig/%{name}
+install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_tmpfilesdir}/%{name}.conf
+install -D -p -m 0644 %{SOURCE4} %{buildroot}%{_unitdir}/%{name}.service
 
-%{__rm}      -f                   ${RPM_BUILD_ROOT}%{_libdir}/lib*.so.{?,??}
+# Do not add default configuration files
+rm -f %{buildroot}%{_sysconfdir}/%{name}/*.default
+
+# Let rpm pick up the docs in the files section
+rm -fr %{buildroot}%{_docdir}/%{name}
 
 %pre
-if ! getent group  %{name} >/dev/null 2>&1; then
-  /usr/sbin/groupadd -r %{name}
-fi
-if ! getent passwd %{name} >/dev/null 2>&1; then
-  /usr/sbin/useradd  -r -g %{name}   \
-    -d /run/%{name} \
-    -c "C-ICAP Service user" -M      \
-    -s /sbin/nologin %{name}
-fi
-exit 0 # Always pass
+getent group %{name} >/dev/null || groupadd -r %{name}
+getent passwd %{name} >/dev/null ||
+    useradd -r -g %{name} -d /run/%{name} -s /sbin/nologin \
+    -c "C-ICAP Service user" %{name}
+exit 0
+
+%if 0%{?rhel} == 7
+%ldconfig_scriptlets libs
+%endif
 
 %post
-if [ $1 -eq 1 ] ; then # Initial installation
-  /bin/systemctl daemon-reload >/dev/null 2>&1 || :
-  /bin/systemctl enable c-icap.service >/dev/null 2>&1 || :
-fi
-
-%post libs -p /sbin/ldconfig
+%systemd_post %{name}.service
 
 %preun
-if [ $1 -eq 0 ]; then # Remove
-  /bin/systemctl --no-reload disable c-icap.service >/dev/null 2>&1 || :
-  /bin/systemctl stop c-icap.service >/dev/null 2>&1 || :
-fi
+%systemd_preun %{name}.service
 
 %postun
-/bin/systemctl daemon-reload >/dev/null 2>&1 || :
-if [ $1 -ge 1 ]; then # Upgrade
-  /bin/systemctl try-restart c-icap.service >/dev/null 2>&1 || :
-fi
-
-%postun libs
-/sbin/ldconfig
-
-%clean
-[ -n "${RPM_BUILD_ROOT}" -a "${RPM_BUILD_ROOT}" != "/" ] && %{__rm} -rf ${RPM_BUILD_ROOT}
+%systemd_postun_with_restart %{name}.service
 
 %files
-%defattr(-,root,root)
-%doc AUTHORS COPYING INSTALL README TODO
+%doc AUTHORS COPYING README TODO
+%doc contrib/*.pl
 %attr(750,root,%{name}) %dir %{_sysconfdir}/%{name}
 %attr(640,root,%{name}) %config(noreplace) %{_sysconfdir}/%{name}/*.conf
 %attr(640,root,%{name}) %config(noreplace) %{_sysconfdir}/%{name}/*.magic
-%attr(640,root,%{name}) %{_sysconfdir}/%{name}/*.default
 %config(noreplace) %{_sysconfdir}/logrotate.d/%{name}
 %config(noreplace) %{_sysconfdir}/sysconfig/%{name}
 %config(noreplace) %{_tmpfilesdir}/%{name}.conf
@@ -186,39 +155,24 @@ fi
 %attr(750,%{name},%{name}) %dir %{_localstatedir}/log/%{name}
 
 %files devel
-%defattr(-,root,root)
-%{_bindir}/%{name}-*config
+%{_bindir}/%{name}-config
+%{_bindir}/%{name}-libicapapi-config
 %{_includedir}/%{modn}
-# Auto clean up of .la files in f36 and onwards
-%if 0%{?fedora} < 36
-%{_libdir}/libicapapi.*a
-%endif
 %{_libdir}/libicapapi.so
-%{_libdir}/%{modn}/bdb_tables.*a
-%{_libdir}/%{modn}/dnsbl_tables.*a
-%{_libdir}/%{modn}/ldap_module.*a
-%{_libdir}/%{modn}/perl_handler.*a
-%{_libdir}/%{modn}/shared_cache.*a
-%{_libdir}/%{modn}/srv_echo.*a
-%{_libdir}/%{modn}/srv_ex206.*a
-%{_libdir}/%{modn}/sys_logger.*a
-%{_mandir}/man8/%{name}-*config.8*
+%{_mandir}/man8/%{name}-config.8*
+%{_mandir}/man8/%{name}-libicapapi-config.8*
 
 %files ldap
-%defattr(-,root,root)
 %{_libdir}/%{modn}/ldap_module.so
 
 %files libs
-%defattr(-,root,root)
-%doc COPYING
+%license COPYING
 %{_libdir}/libicapapi.so.*
 
 %files perl
-%defattr(-,root,root)
 %{_libdir}/%{modn}/perl_handler.so
 
 %files bin
-%defattr(-,root,root)
 %{_bindir}/%{name}-client
 %{_bindir}/%{name}-mkbdb
 %{_bindir}/%{name}-stretch
@@ -227,6 +181,16 @@ fi
 %{_mandir}/man8/%{name}-stretch.8*
 
 %changelog
+* Fri Aug 19 2022 Simone Caronni <negativo17@gmail.com> - 0.5.10-3
+- Clean up SPEC file, use packaging guidelines where possible and fix rpmlint
+  issues.
+- Drop hardcoded dependencies and use dynamic ones.
+- Trim changelog.
+- Do not add default configuration files to configuration directory.
+- Add perl examples to documentation.
+- Add brotli support.
+- Rename sources files to something more readable.
+
 * Sun Jul 10 2022 Frank Crawford <frank@crawford.emu.id.au> - 0.5.10-2
 - Update spec file for autoremoval of autotool .la files
 
@@ -243,30 +207,3 @@ fi
 - Update to 0.5.8
 - Update tmpfile.d location and definitions
 - Upgraded to latest Berkeley DB version
-
-* Mon Jan 28 2019 Frank Crawford <frank@crawford.emu.id.au> - 0.5.5-2
-- Patch c-icap.conf to match correct logfile details
-
-* Mon Jan 07 2019 Frank Crawford <frank@crawford.emu.id.au> - 0.5.5-1
-- Update to 0.5.5
-
-* Thu Mar 16 2017 Marcin Skarbek <rpm@skarbek.name> - 0.4.4-1
-- Update to 0.4.4
-
-* Mon Jan 07 2013 Oliver Seeburger <oliver.seeburger@sundermeier-werkzeugbau.de> - 0.2.5-1
-- Update to 0.2.5
-
-* Mon Dec 31 2012 Oliver Seeburger <oliver.seeburger@sundermeier-werkzeugbau.de> - 0.2.4-1
-- Update to 0.2.4
-
-* Fri Nov 16 2012 Oliver Seeburger <oliver.seeburger@sundermeier-werkzeugbau.de> - 0.2.3-1
-- Update to 0.2.3
-
-* Tue Sep 25 2012 Oliver Seeburger <oliver.seeburger@sundermeier-werkzeugbau.de> - 0.2.2-1
-- Update to 0.2.2
-
-* Wed Jul 04 2012 Oliver Seeburger <oliver.seeburger@sundermeier-werkzeugbau.de> - 0.2.1-1
-- Update to 0.2.1
-
-* Mon Jun 04 2012 Oliver Seeburger <oliver.seeburger@sundermeier-werkzeugbau.de> - 0.1.7-2
-- Initial build for Fedora 17
