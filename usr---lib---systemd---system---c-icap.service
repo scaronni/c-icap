@@ -1,0 +1,11 @@
+[Unit]
+Description=c-icap is an implementation of an ICAP server
+After=syslog.target
+
+[Service]
+ExecStart=/usr/sbin/c-icap -f /etc/c-icap/c-icap.conf
+PIDFile=/run/c-icap/c-icap.pid
+User=c-icap
+
+[Install]
+WantedBy=multi-user.target
