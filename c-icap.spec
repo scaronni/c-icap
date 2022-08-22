@@ -1,8 +1,8 @@
 Name:       c-icap
 Version:    0.5.10
-Release:    5%{?dist}
+Release:    6%{?dist}
 Summary:    An implementation of an ICAP server
-License:    LGPL-2.0-or-later
+License:    BSD-3-Clause and LGPL-2.0-or-later and Sleepycat
 URL:        http://%{name}.sourceforge.net/
 
 Source0:    http://downloads.sourceforge.net/project/%{name}/%{name}/0.5.x/c_icap-%{version}.tar.gz
@@ -10,13 +10,25 @@ Source1:    %{name}.logrotate
 Source2:    %{name}.sysconfig
 Source3:    %{name}.tmpfiles.conf
 Source4:    %{name}.service
-Patch0:     c-icap.conf.in.patch
 
+# Berkely DB support is deprecated:
+# https://fedoraproject.org/wiki/Changes/Libdb_deprecated
+# https://docs.fedoraproject.org/en-US/packaging-guidelines/deprecating-packages/#_consequences_of_a_package_being_deprecated
+# Bundle last usable version before AGPLv3 license switch.
+Source10:   https://github.com/berkeleydb/libdb/releases/download/v5.3.28/db-5.3.28.tar.gz
+Source11:   https://src.fedoraproject.org/rpms/libdb/raw/rawhide/f/db-5.3.28-atomic_compare_exchange.patch
+
+Patch0:     %{name}-conf.in.patch
+Patch1:     %{name}-libdb-path.patch
+
+BuildRequires:  autoconf
+BuildRequires:  automake
 BuildRequires:  bzip2-devel
 BuildRequires:  brotli-devel
 BuildRequires:  gcc
+BuildRequires:  gcc-c++
 BuildRequires:  gdbm-devel
-BuildRequires:  libdb-devel
+BuildRequires:  libtool
 BuildRequires:  make
 BuildRequires:  openldap-devel
 BuildRequires:  pcre-devel
@@ -41,15 +53,9 @@ Requires:    zlib-devel
 The c-icap-devel package contains the static libraries and header files for
 developing software using c-icap.
 
-%package ldap
-Summary:    The LDAP module for %{name}
-Requires:   %{name}%{?_isa} = %{version}-%{release}
-
-%description ldap
-The c-icap-ldap package contains the LDAP module for c-icap.
-
 %package libs
 Summary:    Libraries used by %{name}
+Provides:   bundled(libdb) = 5.3.28
 
 %description libs
 The c-icap-libs package contains all runtime libraries used by c-icap and the
@@ -65,7 +71,32 @@ The c-icap-perl package contains the Perl handler for c-icap.
 %prep
 %autosetup -p1 -n c_icap-%{version}
 
+mkdir db5
+
+pushd db5
+tar --strip-components=1 -xzf %{SOURCE10}
+patch -p1 -i %{SOURCE11}
+popd
+
 %build
+# Regenerate autotools
+sh RECONF
+
+# Build static Berkeley DB reusing all compiler flags / hardening:
+pushd db5/build_unix
+
+%define _configure ../dist/configure
+%configure \
+    --disable-shared \
+    --enable-cxx \
+    --disable-replication
+%undefine _configure
+
+%make_build
+make install DESTDIR=%{_builddir}/%{buildsubdir}/db5 LIBDIR=%{_builddir}/%{buildsubdir}/db5%{_prefix}/lib
+
+popd
+
 %configure \
   --sysconfdir=%{_sysconfdir}/%{name} \
   --enable-shared \
@@ -73,7 +104,7 @@ The c-icap-perl package contains the Perl handler for c-icap.
   --enable-ipv6 \
   --enable-large-files \
   --enable-lib-compat \
-  --with-bdb \
+  --with-bdb=%{_builddir}/%{buildsubdir}/db5%{_prefix}/ \
   --with-brotli \
   --with-ldap \
   --with-openssl \
@@ -142,6 +173,7 @@ exit 0
 %dir %{_libdir}/c_icap
 %{_libdir}/c_icap/bdb_tables.so
 %{_libdir}/c_icap/dnsbl_tables.so
+%{_libdir}/c_icap/ldap_module.so
 %{_libdir}/c_icap/shared_cache.so
 %{_libdir}/c_icap/srv_echo.so
 %{_libdir}/c_icap/srv_ex206.so
@@ -162,9 +194,6 @@ exit 0
 %{_mandir}/man8/%{name}-config.8*
 %{_mandir}/man8/%{name}-libicapapi-config.8*
 
-%files ldap
-%{_libdir}/c_icap/ldap_module.so
-
 %files libs
 %license COPYING
 %{_libdir}/libicapapi.so.*
@@ -173,6 +202,10 @@ exit 0
 %{_libdir}/c_icap/perl_handler.so
 
 %changelog
+* Mon Aug 22 2022 Simone Caronni <negativo17@gmail.com> - 0.5.10-6
+- Bundle Berkely DB 5.3.28.
+- Merge ldap subpackage into main package (minimal dependencies).
+
 * Sun Aug 21 2022 Simone Caronni <negativo17@gmail.com> - 0.5.10-5
 - Review fixes.
 
