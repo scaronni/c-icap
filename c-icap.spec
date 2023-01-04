@@ -1,8 +1,8 @@
 Name:       c-icap
 Version:    0.5.10
-Release:    6%{?dist}
+Release:    7%{?dist}
 Summary:    An implementation of an ICAP server
-License:    BSD-3-Clause and LGPL-2.0-or-later and Sleepycat
+License:    LGPL-2.1-or-later and GPL-2.0-or-later
 URL:        http://%{name}.sourceforge.net/
 
 Source0:    http://downloads.sourceforge.net/project/%{name}/%{name}/0.5.x/c_icap-%{version}.tar.gz
@@ -11,20 +11,13 @@ Source2:    %{name}.sysconfig
 Source3:    %{name}.tmpfiles.conf
 Source4:    %{name}.service
 
-# Berkely DB support is deprecated:
-# https://fedoraproject.org/wiki/Changes/Libdb_deprecated
-# https://docs.fedoraproject.org/en-US/packaging-guidelines/deprecating-packages/#_consequences_of_a_package_being_deprecated
-# Bundle last usable version before AGPLv3 license switch.
-Source10:   https://github.com/berkeleydb/libdb/releases/download/v5.3.28/db-5.3.28.tar.gz
-Source11:   https://src.fedoraproject.org/rpms/libdb/raw/rawhide/f/db-5.3.28-atomic_compare_exchange.patch
-
 Patch0:     %{name}-conf.in.patch
-Patch1:     %{name}-libdb-path.patch
 
 BuildRequires:  autoconf
 BuildRequires:  automake
 BuildRequires:  bzip2-devel
 BuildRequires:  brotli-devel
+BuildRequires:  doxygen
 BuildRequires:  gcc
 BuildRequires:  gcc-c++
 BuildRequires:  gdbm-devel
@@ -33,9 +26,11 @@ BuildRequires:  make
 BuildRequires:  openldap-devel
 BuildRequires:  pcre-devel
 BuildRequires:  perl-devel
+BuildRequires:  perl-generators
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  zlib-devel
 
+Requires:       logrotate
 Requires(pre):  shadow-utils
 
 %description
@@ -55,7 +50,6 @@ developing software using c-icap.
 
 %package libs
 Summary:    Libraries used by %{name}
-Provides:   bundled(libdb) = 5.3.28
 
 %description libs
 The c-icap-libs package contains all runtime libraries used by c-icap and the
@@ -64,6 +58,7 @@ utilities.
 %package perl
 Summary:    The Perl handler for %{name}
 Requires:   %{name}%{?_isa} = %{version}-%{release}
+Requires:   perl(:MODULE_COMPAT_%(eval "`%{__perl} -V:version`"; echo $version))
 
 %description perl
 The c-icap-perl package contains the Perl handler for c-icap.
@@ -71,31 +66,13 @@ The c-icap-perl package contains the Perl handler for c-icap.
 %prep
 %autosetup -p1 -n c_icap-%{version}
 
-mkdir db5
-
-pushd db5
-tar --strip-components=1 -xzf %{SOURCE10}
-patch -p1 -i %{SOURCE11}
-popd
 
 %build
+# Do not explicitly link to libdb which is only brought in as a Perl dependency and not directly used
+sed -i 's/$Config{libs}//' configure.ac
 # Regenerate autotools
 sh RECONF
 
-# Build static Berkeley DB reusing all compiler flags / hardening:
-pushd db5/build_unix
-
-%define _configure ../dist/configure
-%configure \
-    --disable-shared \
-    --enable-cxx \
-    --disable-replication
-%undefine _configure
-
-%make_build
-make install DESTDIR=%{_builddir}/%{buildsubdir}/db5 LIBDIR=%{_builddir}/%{buildsubdir}/db5%{_prefix}/lib
-
-popd
 
 %configure \
   --sysconfdir=%{_sysconfdir}/%{name} \
@@ -104,7 +81,7 @@ popd
   --enable-ipv6 \
   --enable-large-files \
   --enable-lib-compat \
-  --with-bdb=%{_builddir}/%{buildsubdir}/db5%{_prefix}/ \
+  --without-bdb \
   --with-brotli \
   --with-ldap \
   --with-openssl \
@@ -112,6 +89,30 @@ popd
   --with-zlib
 
 %make_build
+
+%check
+pushd tests
+./test_allocators
+./test_arrays
+# Not built:
+#./test_atomics
+# Not built:
+#./test_atomics_cplusplus
+./test_base64
+# Requires input:
+#./test_body
+./test_cache
+# Requires input:
+#./test_filetype
+./test_headers
+./test_lists
+./test_md5
+./test_ops
+# Not built:
+#./test_shared_locking
+# Requires input:
+#./test_tables
+popd
 
 %install
 %make_install
@@ -166,12 +167,10 @@ exit 0
 %config(noreplace) %{_sysconfdir}/sysconfig/%{name}
 %ghost /run/%{name}/
 %{_bindir}/%{name}-client
-%{_bindir}/%{name}-mkbdb
 %{_bindir}/%{name}-stretch
 %{_sbindir}/%{name}
 %{_datadir}/c_icap
 %dir %{_libdir}/c_icap
-%{_libdir}/c_icap/bdb_tables.so
 %{_libdir}/c_icap/dnsbl_tables.so
 %{_libdir}/c_icap/ldap_module.so
 %{_libdir}/c_icap/shared_cache.so
@@ -180,7 +179,8 @@ exit 0
 %{_libdir}/c_icap/sys_logger.so
 %{_mandir}/man8/%{name}.8*
 %{_mandir}/man8/%{name}-client.8*
-%{_mandir}/man8/%{name}-mkbdb.8*
+# Removed as mkbdb is not installed
+%exclude %{_mandir}/man8/%{name}-mkbdb.8*
 %{_mandir}/man8/%{name}-stretch.8*
 %{_tmpfilesdir}/%{name}.conf
 %{_unitdir}/%{name}.service
@@ -202,6 +202,10 @@ exit 0
 %{_libdir}/c_icap/perl_handler.so
 
 %changelog
+* Wed Jan 04 2023 Simone Caronni <negativo17@gmail.com> - 0.5.10-7
+- Review fixes: drop bundled Berkeley DB and disable DB support, adjust Perl
+  requirements, add tests, adjust licenses.
+
 * Mon Aug 22 2022 Simone Caronni <negativo17@gmail.com> - 0.5.10-6
 - Bundle Berkely DB 5.3.28.
 - Merge ldap subpackage into main package (minimal dependencies).
